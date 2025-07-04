@@ -14,12 +14,14 @@ function App() {
   const [audioLevel, setAudioLevel] = useState(0)
   const [showWelcome, setShowWelcome] = useState(true)
   const [isSpeaking, setIsSpeaking] = useState(false)
+  const [voicesLoaded, setVoicesLoaded] = useState(false)
   
   const mediaRecorderRef = useRef(null)
   const audioContextRef = useRef(null)
   const analyserRef = useRef(null)
   const animationFrameRef = useRef(null)
   const speechSynthesisRef = useRef(null)
+  const availableVoicesRef = useRef([])
 
   useEffect(() => {
     // Hide welcome screen after 3 seconds
@@ -27,11 +29,61 @@ function App() {
     return () => clearTimeout(timer)
   }, [])
 
-  // Text-to-speech function
+  // Load voices when component mounts
+  useEffect(() => {
+    const loadVoices = () => {
+      const voices = speechSynthesis.getVoices()
+      availableVoicesRef.current = voices
+      setVoicesLoaded(true)
+      console.log('Voices loaded:', voices.length)
+      voices.forEach(voice => {
+        console.log(`Voice: ${voice.name} (${voice.lang})`)
+      })
+    }
+
+    // Load voices immediately if available
+    loadVoices()
+
+    // Listen for voice changes (some browsers load voices asynchronously)
+    const handleVoicesChanged = () => {
+      loadVoices()
+    }
+
+    speechSynthesis.addEventListener('voiceschanged', handleVoicesChanged)
+
+    return () => {
+      speechSynthesis.removeEventListener('voiceschanged', handleVoicesChanged)
+    }
+  }, [])
+
+  // Speak welcome message when voices are loaded and welcome screen is hidden
+  useEffect(() => {
+    if (voicesLoaded && !showWelcome) {
+      const timer = setTimeout(() => {
+        speakText("Hello! I'm Isha, your professional AI assistant. Hold the mic button to speak with me!")
+      }, 500)
+      return () => clearTimeout(timer)
+    }
+  }, [voicesLoaded, showWelcome])
+
+  // Test TTS function
+  const testTTS = () => {
+    speakText("Hello! This is a test of the text-to-speech functionality. I am Isha, your AI assistant, and I can speak to you!")
+  }
+
+  // Enhanced text-to-speech function
   const speakText = (text) => {
+    console.log('Speaking text:', text)
+    
     // Cancel any ongoing speech
     if (speechSynthesisRef.current) {
       speechSynthesis.cancel()
+    }
+
+    // Check if speech synthesis is supported
+    if (!('speechSynthesis' in window)) {
+      console.error('Speech synthesis not supported')
+      return
     }
 
     setIsSpeaking(true)
@@ -43,22 +95,73 @@ function App() {
     utterance.pitch = 1.1
     utterance.volume = 0.8
     
-    // Try to use a female voice for Isha
-    const voices = speechSynthesis.getVoices()
-    const femaleVoice = voices.find(voice => 
-      voice.name.toLowerCase().includes('female') || 
-      voice.name.toLowerCase().includes('woman') ||
-      voice.name.toLowerCase().includes('samantha') ||
-      voice.name.toLowerCase().includes('karen') ||
-      voice.name.toLowerCase().includes('victoria') ||
-      voice.name.toLowerCase().includes('susan')
-    )
+    // Get available voices
+    const voices = availableVoicesRef.current.length > 0 
+      ? availableVoicesRef.current 
+      : speechSynthesis.getVoices()
     
-    if (femaleVoice) {
-      utterance.voice = femaleVoice
+    console.log('Available voices:', voices.length)
+    
+    // Try to find a suitable voice (prefer female voices)
+    const preferredVoices = [
+      'Google US English Female',
+      'Microsoft Zira - English (United States)',
+      'Samantha',
+      'Karen',
+      'Victoria',
+      'Susan',
+      'Alex',
+      'Google UK English Female'
+    ]
+    
+    let selectedVoice = null
+    
+    // First try to find preferred voices
+    for (const preferredName of preferredVoices) {
+      selectedVoice = voices.find(voice => 
+        voice.name.toLowerCase().includes(preferredName.toLowerCase())
+      )
+      if (selectedVoice) break
+    }
+    
+    // If no preferred voice found, try to find any female voice
+    if (!selectedVoice) {
+      selectedVoice = voices.find(voice => 
+        voice.name.toLowerCase().includes('female') || 
+        voice.name.toLowerCase().includes('woman') ||
+        voice.name.toLowerCase().includes('samantha') ||
+        voice.name.toLowerCase().includes('karen') ||
+        voice.name.toLowerCase().includes('victoria') ||
+        voice.name.toLowerCase().includes('susan')
+      )
+    }
+    
+    // If still no voice found, use the first available English voice
+    if (!selectedVoice) {
+      selectedVoice = voices.find(voice => 
+        voice.lang.startsWith('en')
+      )
+    }
+    
+    // If still no voice, use the first available voice
+    if (!selectedVoice && voices.length > 0) {
+      selectedVoice = voices[0]
+    }
+    
+    if (selectedVoice) {
+      utterance.voice = selectedVoice
+      console.log('Selected voice:', selectedVoice.name)
+    } else {
+      console.log('No voice selected, using default')
+    }
+    
+    utterance.onstart = () => {
+      console.log('Speech started')
+      setIsSpeaking(true)
     }
     
     utterance.onend = () => {
+      console.log('Speech ended')
       setIsSpeaking(false)
       speechSynthesisRef.current = null
     }
@@ -67,14 +170,33 @@ function App() {
       console.error('Speech synthesis error:', event.error)
       setIsSpeaking(false)
       speechSynthesisRef.current = null
+      
+      // Try to restart speech synthesis on error
+      if (event.error === 'interrupted' || event.error === 'canceled') {
+        console.log('Retrying speech synthesis...')
+        setTimeout(() => {
+          speakText(text)
+        }, 100)
+      }
     }
     
     speechSynthesisRef.current = utterance
-    speechSynthesis.speak(utterance)
+    
+    // For some browsers, we need to call speak() after a small delay
+    setTimeout(() => {
+      try {
+        speechSynthesis.speak(utterance)
+        console.log('Speech synthesis started')
+      } catch (error) {
+        console.error('Error starting speech synthesis:', error)
+        setIsSpeaking(false)
+      }
+    }, 100)
   }
 
   // Function to stop speaking
   const stopSpeaking = () => {
+    console.log('Stopping speech')
     if (speechSynthesisRef.current) {
       speechSynthesis.cancel()
       setIsSpeaking(false)
@@ -157,6 +279,7 @@ function App() {
         
         // Send message to backend
         try {
+          console.log('Sending message to backend:', transcript)
           const response = await fetch(getApiEndpoint('chat'), {
             method: 'POST',
             headers: {
@@ -176,6 +299,7 @@ function App() {
           
           if (response.ok) {
             const data = await response.json()
+            console.log('Received response from backend:', data)
             const aiResponse = {
               id: data.message_id || Date.now() + 1,
               text: data.response,
@@ -185,8 +309,10 @@ function App() {
             setMessages(prev => [...prev, aiResponse])
             
             // Speak the AI response
+            console.log('About to speak AI response')
             speakText(data.response)
           } else {
+            console.error('Backend response not ok:', response.status)
             throw new Error('Failed to get response from backend')
           }
         } catch (error) {
@@ -201,6 +327,7 @@ function App() {
           setMessages(prev => [...prev, fallbackResponse])
           
           // Speak the fallback response
+          console.log('About to speak fallback response')
           speakText(fallbackResponse.text)
         }
         
@@ -313,19 +440,30 @@ function App() {
                 </p>
               </div>
             </div>
-            {isSpeaking && (
+            <div className="header-buttons">
+              {isSpeaking && (
+                <motion.button
+                  className="stop-speaking-btn"
+                  onClick={stopSpeaking}
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                >
+                  Stop
+                </motion.button>
+              )}
               <motion.button
-                className="stop-speaking-btn"
-                onClick={stopSpeaking}
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.8 }}
+                className="test-tts-btn"
+                onClick={testTTS}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                title="Test Text-to-Speech"
               >
-                Stop
+                🔊
               </motion.button>
-            )}
+            </div>
           </div>
         </motion.header>
 
