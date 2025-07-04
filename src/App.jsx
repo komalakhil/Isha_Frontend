@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Mic, MicOff, Send, Sparkles, Brain, Zap } from 'lucide-react'
+import { getApiEndpoint } from './api.js'
 import './App.css'
 
 function App() {
@@ -12,17 +13,74 @@ function App() {
   const [isRecording, setIsRecording] = useState(false)
   const [audioLevel, setAudioLevel] = useState(0)
   const [showWelcome, setShowWelcome] = useState(true)
+  const [isSpeaking, setIsSpeaking] = useState(false)
   
   const mediaRecorderRef = useRef(null)
   const audioContextRef = useRef(null)
   const analyserRef = useRef(null)
   const animationFrameRef = useRef(null)
+  const speechSynthesisRef = useRef(null)
 
   useEffect(() => {
     // Hide welcome screen after 3 seconds
     const timer = setTimeout(() => setShowWelcome(false), 3000)
     return () => clearTimeout(timer)
   }, [])
+
+  // Text-to-speech function
+  const speakText = (text) => {
+    // Cancel any ongoing speech
+    if (speechSynthesisRef.current) {
+      speechSynthesis.cancel()
+    }
+
+    setIsSpeaking(true)
+    
+    const utterance = new SpeechSynthesisUtterance(text)
+    
+    // Configure voice settings
+    utterance.rate = 0.9
+    utterance.pitch = 1.1
+    utterance.volume = 0.8
+    
+    // Try to use a female voice for Isha
+    const voices = speechSynthesis.getVoices()
+    const femaleVoice = voices.find(voice => 
+      voice.name.toLowerCase().includes('female') || 
+      voice.name.toLowerCase().includes('woman') ||
+      voice.name.toLowerCase().includes('samantha') ||
+      voice.name.toLowerCase().includes('karen') ||
+      voice.name.toLowerCase().includes('victoria') ||
+      voice.name.toLowerCase().includes('susan')
+    )
+    
+    if (femaleVoice) {
+      utterance.voice = femaleVoice
+    }
+    
+    utterance.onend = () => {
+      setIsSpeaking(false)
+      speechSynthesisRef.current = null
+    }
+    
+    utterance.onerror = (event) => {
+      console.error('Speech synthesis error:', event.error)
+      setIsSpeaking(false)
+      speechSynthesisRef.current = null
+    }
+    
+    speechSynthesisRef.current = utterance
+    speechSynthesis.speak(utterance)
+  }
+
+  // Function to stop speaking
+  const stopSpeaking = () => {
+    if (speechSynthesisRef.current) {
+      speechSynthesis.cancel()
+      setIsSpeaking(false)
+      speechSynthesisRef.current = null
+    }
+  }
 
   const startRecording = async () => {
     try {
@@ -99,7 +157,7 @@ function App() {
         
         // Send message to backend
         try {
-          const response = await fetch('http://localhost:5000/chat', {
+          const response = await fetch(getApiEndpoint('chat'), {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -125,6 +183,9 @@ function App() {
               timestamp: new Date(data.timestamp)
             }
             setMessages(prev => [...prev, aiResponse])
+            
+            // Speak the AI response
+            speakText(data.response)
           } else {
             throw new Error('Failed to get response from backend')
           }
@@ -138,6 +199,9 @@ function App() {
             timestamp: new Date()
           }
           setMessages(prev => [...prev, fallbackResponse])
+          
+          // Speak the fallback response
+          speakText(fallbackResponse.text)
         }
         
         setTranscript('')
@@ -225,17 +289,43 @@ function App() {
           transition={{ delay: 0.8, duration: 0.6 }}
         >
           <div className="header-content">
-            <motion.div
-              className="avatar"
-              whileHover={{ scale: 1.1 }}
-              transition={{ type: "spring", stiffness: 300 }}
-            >
-              <Brain size={24} />
-            </motion.div>
-            <div className="header-text">
-              <h2>Isha</h2>
-              <p>Professional AI Assistant</p>
+            <div className="header-left">
+              <motion.div
+                className={`avatar ${isSpeaking ? 'speaking' : ''}`}
+                whileHover={{ scale: 1.1 }}
+                animate={isSpeaking ? {
+                  scale: [1, 1.1, 1],
+                  rotate: [0, 2, -2, 0]
+                } : {}}
+                transition={{ 
+                  type: "spring", 
+                  stiffness: 300,
+                  duration: 0.8,
+                  repeat: isSpeaking ? Infinity : 0
+                }}
+              >
+                <Brain size={24} />
+              </motion.div>
+              <div className="header-text">
+                <h2>Isha</h2>
+                <p>
+                  {isSpeaking ? 'Speaking...' : 'Professional AI Assistant'}
+                </p>
+              </div>
             </div>
+            {isSpeaking && (
+              <motion.button
+                className="stop-speaking-btn"
+                onClick={stopSpeaking}
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+              >
+                Stop
+              </motion.button>
+            )}
           </div>
         </motion.header>
 

@@ -132,6 +132,13 @@ body {
   display: flex;
   align-items: center;
   gap: 15px;
+  justify-content: space-between;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 15px;
 }
 
 .avatar {
@@ -144,6 +151,30 @@ body {
   justify-content: center;
   color: white;
   box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+  transition: var(--transition);
+}
+
+.avatar.speaking {
+  box-shadow: 0 8px 25px rgba(102, 126, 234, 0.5);
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+}
+
+.stop-speaking-btn {
+  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
+}
+
+.stop-speaking-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(255, 107, 107, 0.4);
 }
 
 .header-text h2 {
